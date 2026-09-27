@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<meta name="theme-color" content="#d92f8b">
+<title>I'm at 1% — Live Battery Assistance</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
+<style>
+:root{--pink:#d92f8b;--deep:#50142f;--soft:#fff0f6;--line:#df76a6}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:#ffd6e8;color:#50142f}
+button,input,select{font:inherit}
+button{cursor:pointer;border:1px solid #c94f88;border-radius:10px;padding:10px 14px;background:#ffd0e2;color:#50142f}
+button.primary{background:var(--pink);color:#fff;border-color:var(--pink)}
+.app{min-height:100vh;background:radial-gradient(circle at 80% 0%,#ff79ae 0,#ffafd0 42%,#ffd9e9 100%)}
+header{padding:16px 20px;background:#ffb6d5ee;border-bottom:1px solid #df6d9f;position:sticky;top:0;z-index:1000;backdrop-filter:blur(10px)}
+.brand{font-size:20px;font-weight:800}.brand span{color:#c51e72}
+.sub{font-size:12px;color:#7a3153;margin-top:3px}
+nav{display:flex;gap:7px;overflow:auto;padding:10px 14px;background:#ffafd0;border-bottom:1px solid #df6d9f;position:sticky;top:72px;z-index:900;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{white-space:nowrap}
+nav button.active{background:var(--pink);color:#fff}
+main{max-width:1200px;margin:auto;padding:18px}
+.card{background:#fff0f6e9;border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 8px 25px #0002;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.hidden{display:none!important}
+.muted{color:#7e4861}.tiny{font-size:12px}.metric{font-size:28px;font-weight:800;color:#d9367f}
+label{display:block;font-size:13px;margin:10px 0 5px}
+input,select{width:100%;background:#ffe5ef;border:1px solid #d85b91;border-radius:10px;padding:11px;color:#50142f}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.status{display:inline-block;padding:4px 8px;border-radius:999px;font-size:11px;border:1px solid #b94f7d}
+.online-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#22a65a;margin-right:6px}
+.user-row{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #e7a6bf}
+#liveMap{height:520px;border-radius:14px;overflow:hidden;border:1px solid #cf6b99}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-top:8px}
+.notice{padding:10px;border-radius:10px;background:#ffe1ec;border:1px solid var(--line);margin:10px 0}
+.toast{position:fixed;right:16px;bottom:16px;background:var(--deep);color:#fff;padding:11px 14px;border-radius:10px;display:none;z-index:3000}
+.auth{max-width:480px;margin:50px auto}.row{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+.leaflet-routing-container{max-height:220px;overflow:auto}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;background:#ffe1ec;font-size:12px}
+.chat-layout{display:grid;grid-template-columns:270px 1fr;gap:12px;min-height:480px}
+.chat-list{background:#ffe5ef;border:1px solid var(--line);border-radius:14px;overflow:auto;max-height:520px}
+.chat-person{padding:12px;border-bottom:1px solid #e7a6bf;cursor:pointer}
+.chat-person:hover,.chat-person.active{background:#ffd0e2}
+.chat-window{display:flex;flex-direction:column;background:#fff8fb;border:1px solid var(--line);border-radius:14px;min-width:0}
+.chat-head{padding:12px 14px;border-bottom:1px solid #e7a6bf}
+.messages{flex:1;min-height:260px;max-height:360px;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+.bubble{max-width:78%;padding:9px 12px;border-radius:14px;background:#ffe1ec;align-self:flex-start;word-break:break-word}
+.bubble.mine{background:var(--pink);color:#fff;align-self:flex-end}
+.bubble small{display:block;opacity:.7;font-size:10px;margin-top:3px}
+.chat-compose{display:flex;gap:8px;padding:10px;border-top:1px solid #e7a6bf}
+.chat-compose input{flex:1}
+.empty{padding:28px;text-align:center;color:#7e4861}
+.help-card{border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:10px;background:#fff8fb}
+@media(max-width:720px){.chat-layout{grid-template-columns:1fr}.chat-list{max-height:170px}.messages{max-height:none}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="brand">I'M AT <span>1%</span></div>
+  <div class="sub">Live Battery Assistance · 1 km service area · Self-hosted server, no Firebase</div>
+</header>
+
+<div id="authScreen" class="auth card">
+  <h1>Welcome</h1>
+  <p class="muted">Log in to see participating students and available helpers in real time.</p>
+  <label>Name</label><input id="regName" placeholder="Shown to other users" style="display:none">
+  <label>Email</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com">
+  <label>Password</label><input id="password" type="password" autocomplete="current-password" placeholder="At least 6 characters">
+  <div class="actions">
+    <button class="primary" onclick="login()">Log In</button>
+    <button onclick="toggleRegister()">Create Account</button>
+  </div>
+  <div id="authMsg" class="tiny muted" style="margin-top:10px"></div>
+  <div class="notice tiny"><b>Live server:</b> accounts and data are stored on this app's own server — every device sees the same data in real time.</div>
+</div>
+
+<div id="appScreen" class="hidden">
+<nav>
+  <button data-page="dashboard" class="active" onclick="go('dashboard')">Dashboard</button>
+  <button data-page="mapPage" onclick="go('mapPage')">Live Map</button>
+  <button data-page="request" onclick="go('request')">I'm at 1%</button>
+  <button data-page="helpers" onclick="go('helpers')">Available Helpers</button>
+  <button data-page="helpNearby" onclick="go('helpNearby')">🙋 Who To Help</button>
+  <button data-page="requests" onclick="go('requests')">Requests</button>
+  <button data-page="chat" onclick="go('chat')">💬 Messages <span id="messageBadge"></span></button>
+  <button data-page="profile" onclick="go('profile')">Profile</button>
+  <button onclick="logout()">Log Out</button>
+</nav>
+
+<main>
+<section id="dashboard" class="page">
+  <div class="card">
+    <div class="row">
+      <div><h1>Battery Assistance Command Center</h1><p class="muted">Live service area centered on the configured location.</p></div>
+      <span id="connectionStatus" class="status">Connecting…</span>
+    </div>
+    <div class="grid" style="margin-top:14px">
+      <div class="card"><div class="tiny muted">SERVICE CENTER</div><div class="metric" style="font-size:16px">16.9372062, 121.7644160</div><div class="tiny">1 km radius</div></div>
+      <div class="card"><div class="tiny muted">ONLINE USERS</div><div id="onlineCount" class="metric">0</div></div>
+      <div class="card"><div class="tiny muted">AVAILABLE HELPERS</div><div id="helperCount" class="metric">0</div></div>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>Your Live Status</h3>
+      <p id="myStatus" class="muted">Loading profile…</p>
+      <div class="actions">
+        <button class="primary" onclick="enableLocation()">Share Live Location</button>
+        <button onclick="disableLocation()">Stop Location</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Navigation</h3>
+      <p class="muted">Use the map to choose a helper or student and request a route from your current position.</p>
+      <button class="primary" onclick="go('mapPage')">Open Live Map</button>
+    </div>
+  </div>
+</section>
+
+<section id="mapPage" class="page hidden">
+  <div class="card">
+    <div class="row">
+      <div><h1>Live 1 km Map</h1><p class="muted">The circle marks the full 1 km service perimeter.</p></div>
+      <button onclick="locateMe()">Locate Me</button>
+    </div>
+    <div id="liveMap"></div>
+    <div class="legend"><span>🟢 Online student</span><span>🔋 Available helper</span><span>📍 You</span><span>⭕ 1 km perimeter</span></div>
+    <div id="routeBox" class="notice hidden"></div>
+  </div>
+</section>
+
+<section id="request" class="page hidden">
+  <div class="card">
+    <h1>I'm at 1%</h1>
+    <p class="muted">Send a request to nearby helpers.</p>
+    <label>Battery percentage</label><input id="battery" type="number" min="1" max="100" value="1">
+    <label>Resource needed</label>
+    <select id="resource"><option>Power Bank</option><option>Charger</option><option>Charging Outlet</option></select>
+    <label>Message</label><input id="requestNote" placeholder="Example: I need a compatible charger.">
+    <div class="actions"><button class="primary" onclick="createRequest()">Send Request</button></div>
+  </div>
+</section>
+
+<section id="helpers" class="page hidden">
+  <div class="card">
+    <h1>Available Helpers — Live</h1>
+    <p class="muted">Helpers with location sharing enabled appear on the map. Tap a helper to message or request navigation.</p>
+    <div id="helperList"></div>
+  </div>
+</section>
+
+<section id="helpNearby" class="page hidden">
+  <div class="card">
+    <div class="row"><div><h1>🙋 Who You Can Help</h1><p class="muted">Every online student in the service area, closest first. Reach out even before they file a request.</p></div><button onclick="renderHelpNearby()">Refresh</button></div>
+    <div id="helpNearbyList"></div>
+  </div>
+</section>
+
+<section id="requests" class="page hidden">
+  <div class="card">
+    <div class="row"><div><h1>Assistance Requests</h1><p class="muted">Students see their own requests; helpers see every open request.</p></div><button onclick="refreshRequests()">Refresh</button></div>
+    <div id="requestList"></div>
+  </div>
+</section>
+
+<section id="chat" class="page hidden">
+  <div class="card">
+    <div class="row"><div><h1>💬 Messages</h1><p class="muted">Direct, private conversation between a student and a helper.</p></div><span class="badge">Live · WebSocket</span></div>
+    <div class="chat-layout" style="margin-top:14px">
+      <div class="chat-list" id="chatPeople"></div>
+      <div class="chat-window">
+        <div class="chat-head" id="chatHead"><b>Select a person</b><div class="tiny muted">Choose someone from the list, the map, or Who To Help.</div></div>
+        <div class="messages" id="messages"><div class="empty">💬 Your conversation will appear here.</div></div>
+        <div class="chat-compose"><input id="chatInput" placeholder="Type a message…" maxlength="500" onkeydown="if(event.key==='Enter')sendMessage()"><button class="primary" onclick="sendMessage()">Send</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="profile" class="page hidden">
+  <div class="card">
+    <h1>Profile</h1>
+    <label>Name</label><input id="profileName" placeholder="Your name">
+    <label>Role</label>
+    <select id="profileRole"><option>Student</option><option>Helper</option><option>Both</option></select>
+    <label>Available as helper</label>
+    <select id="helperAvailable"><option value="false">No</option><option value="true">Yes</option></select>
+    <div class="actions"><button class="primary" onclick="saveProfile()">Save Profile</button></div>
+    <p class="tiny muted">Your live presence is updated while you are signed in. Location is only shared after you grant browser location permission.</p>
+  </div>
+</section>
+</main>
+</div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+const CENTER={lat:16.9372062,lng:121.7644160}, RADIUS=1000;
+const TOKEN_KEY="imat1_token";
+let token=localStorage.getItem(TOKEN_KEY)||null;
+let me={},myId=null,users=new Map(),requests=[],chatWith=null,seenPairs=new Set();
+let mapObj=null,centerCircle=null,userLayer=null,helperLayer=null,routeControl=null;
+let watchId=null,currentPosition=null,ws=null,wsRetry=0;
+
+const $=id=>document.getElementById(id);
+function toast(t){const x=$("toast");x.textContent=t;x.style.display="block";setTimeout(()=>x.style.display="none",2200)}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+function distance(a,b,c,d){const R=6371000,rad=x=>x*Math.PI/180,da=rad(c-a),db=rad(d-b),q=Math.sin(da/2)**2+Math.cos(rad(a))*Math.cos(rad(c))*Math.sin(db/2)**2;return 2*R*Math.asin(Math.sqrt(q))}
+
+async function api(path,opts={}){
+  const headers={"Content-Type":"application/json",...(opts.headers||{})};
+  if(token)headers.Authorization="Bearer "+token;
+  const res=await fetch(path,{...opts,headers});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok){throw new Error(data.error||"Request failed")}
+  return data;
+}
+
+window.toggleRegister=()=>{
+  const show=$("regName").style.display==="none";
+  $("regName").style.display=show?"block":"none";
+  $("authMsg").textContent=show?"Fill in your name, email and a password, then click Create Account again.":"";
+};
+window.login=async()=>{
+  try{
+    const email=$("email").value.trim(),password=$("password").value;
+    const data=await api("/api/auth/login",{method:"POST",body:JSON.stringify({email,password})});
+    token=data.token;localStorage.setItem(TOKEN_KEY,token);await startSession();
+  }catch(e){$("authMsg").textContent=e.message}
+};
+// Create Account button: if the name field is visible AND filled, register; otherwise reveal the field first.
+document.addEventListener("DOMContentLoaded",()=>{
+  const createBtn=[...document.querySelectorAll(".auth button")].find(b=>b.textContent==="Create Account");
+  createBtn.onclick=async()=>{
+    if($("regName").style.display==="none"){toggleRegister();return}
+    try{
+      const name=$("regName").value.trim(),email=$("email").value.trim(),password=$("password").value;
+      const data=await api("/api/auth/register",{method:"POST",body:JSON.stringify({name,email,password})});
+      token=data.token;localStorage.setItem(TOKEN_KEY,token);await startSession();
+    }catch(e){$("authMsg").textContent=e.message}
+  };
+});
+window.logout=async()=>{
+  if(token)try{await fetch("/api/offline?token="+encodeURIComponent(token),{method:"POST"})}catch(e){}
+  localStorage.removeItem(TOKEN_KEY);token=null;
+  if(ws)ws.close();
+  if(watchId!==null)navigator.geolocation.clearWatch(watchId);
+  $("appScreen").classList.add("hidden");$("authScreen").classList.remove("hidden");
+};
+
+async function startSession(){
+  $("authScreen").classList.add("hidden");$("appScreen").classList.remove("hidden");
+  me=await api("/api/me");myId=me.id;
+  $("profileName").value=me.name||"";$("profileRole").value=me.role||"Student";$("helperAvailable").value=String(!!me.helperAvailable);
+  $("myStatus").textContent=`Signed in as ${me.name||me.email}. Role: ${me.role}.`;
+  $("connectionStatus").textContent="Connected";
+  connectWS();
+  await refreshUsers();await refreshRequests();
+  initMap();
+  setInterval(()=>{api("/api/heartbeat",{method:"POST"}).catch(()=>{})},25000);
+}
+window.saveProfile=async()=>{
+  me=await api("/api/me",{method:"PUT",body:JSON.stringify({name:$("profileName").value.trim()||"User",role:$("profileRole").value,helperAvailable:$("helperAvailable").value==="true"})});
+  toast("Profile saved");$("myStatus").textContent=`Signed in as ${me.name}. Role: ${me.role}.`;
+};
+
+function connectWS(){
+  const proto=location.protocol==="https:"?"wss:":"ws:";
+  ws=new WebSocket(`${proto}//${location.host}/ws?token=${encodeURIComponent(token)}`);
+  ws.onmessage=ev=>{
+    const msg=JSON.parse(ev.data);
+    if(msg.type==="users:update")refreshUsers();
+    if(msg.type==="requests:update")refreshRequests();
+    if(msg.type==="message:new"){if(chatWith&&msg.pair===[myId,chatWith].sort().join("_"))loadMessages();renderPeople()}
+  };
+  ws.onclose=()=>{if(token)setTimeout(connectWS,Math.min(10000,1000*(++wsRetry)))};
+  ws.onopen=()=>{wsRetry=0};
+}
+
+async function refreshUsers(){
+  const list=await api("/api/users");
+  users=new Map(list.map(u=>[u.id,u]));
+  renderLive();renderHelpers();renderPeople();renderHelpNearby();drawMarkers();
+}
+function renderLive(){
+  const live=[...users.values()].filter(u=>u.online);
+  $("onlineCount").textContent=live.length+1;
+  $("helperCount").textContent=live.filter(u=>u.helperAvailable).length;
+}
+function renderHelpers(){
+  const list=[...users.values()].filter(u=>u.online&&u.helperAvailable);
+  $("helperList").innerHTML=list.length?list.map(u=>`<div class="user-row"><div><b><span class="online-dot"></span>${esc(u.name)}</b><div class="tiny muted">${esc(u.role)} · ${Number.isFinite(u.lat)?distance(CENTER.lat,CENTER.lng,u.lat,u.lng).toFixed(0)+" m from center":"location not shared"}</div></div><div class="actions"><button onclick="openChat('${u.id}');go('chat')">💬 Message</button><button class="primary" onclick="routeTo('${u.id}')">Guide Me</button></div></div>`).join(""):"<div class='muted'>No helpers are currently online.</div>";
+}
+function renderHelpNearby(){
+  const box=$("helpNearbyList");if(!box)return;
+  const openReq=uid=>requests.find(r=>r.userId===uid&&r.status!=="Resolved");
+  const list=[...users.values()].filter(u=>u.online&&!u.helperAvailable);
+  list.sort((a,b)=>{
+    const da=Number.isFinite(a.lat)?distance(CENTER.lat,CENTER.lng,a.lat,a.lng):Infinity;
+    const db_=Number.isFinite(b.lat)?distance(CENTER.lat,CENTER.lng,b.lat,b.lng):Infinity;
+    return da-db_;
+  });
+  box.innerHTML=list.length?list.map(u=>{
+    const r=openReq(u.id);
+    const dist=Number.isFinite(u.lat)?distance(CENTER.lat,CENTER.lng,u.lat,u.lng).toFixed(0)+" m from center":"location not shared";
+    return `<div class="help-card"><div class="row"><b>${esc(u.name)}</b>${r?`<span class="status">${esc(r.status)}</span>`:"<span class='tiny muted'>No active request</span>"}</div>
+      <div class="tiny muted" style="margin-top:5px">${dist}</div>
+      ${r?`<p style="margin:8px 0">🔋 ${r.battery}% · needs ${esc(r.resource)}${r.note?" — "+esc(r.note):""}</p>`:""}
+      <div class="actions"><button class="primary" onclick="openChat('${u.id}');go('chat')">💬 Reach Out</button>${Number.isFinite(u.lat)?`<button onclick="routeTo('${u.id}')">Guide Me</button>`:""}${r&&r.status==="Pending"?`<button onclick="acceptRequest('${r.id}')">Accept Request</button>`:""}</div></div>`;
+  }).join(""):"<div class='muted'>No students are online right now.</div>";
+}
+function initMap(){
+  if(mapObj)return;
+  mapObj=L.map("liveMap").setView([CENTER.lat,CENTER.lng],15);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(mapObj);
+  centerCircle=L.circle([CENTER.lat,CENTER.lng],{radius:RADIUS,weight:2,fillOpacity:.08}).addTo(mapObj);
+  mapObj.fitBounds(centerCircle.getBounds());
+  userLayer=L.layerGroup().addTo(mapObj);helperLayer=L.layerGroup().addTo(mapObj);
+  drawMarkers();
+}
+function drawMarkers(){
+  if(!mapObj)return;
+  userLayer.clearLayers();helperLayer.clearLayers();
+  [...users.values()].filter(u=>u.online&&Number.isFinite(u.lat)&&Number.isFinite(u.lng)).forEach(u=>{
+    if(distance(CENTER.lat,CENTER.lng,u.lat,u.lng)>RADIUS)return;
+    const helper=!!u.helperAvailable;
+    const icon=L.divIcon({className:"",html:`<div style="font-size:25px">${helper?"🔋":"🟢"}</div>`,iconSize:[30,30],iconAnchor:[15,15]});
+    const m=L.marker([u.lat,u.lng],{icon}).bindPopup(`<b>${esc(u.name)}</b><br>${helper?"Available helper":"Online student"}<br><button onclick="openChat('${u.id}');go('chat')">Message</button> <button onclick="routeTo('${u.id}')">Guide me here</button>`);
+    (helper?helperLayer:userLayer).addLayer(m);
+  });
+  if(currentPosition){
+    const meIcon=L.divIcon({className:"",html:`<div style="font-size:25px">📍</div>`,iconSize:[30,30],iconAnchor:[15,15]});
+    L.marker([currentPosition.lat,currentPosition.lng],{icon:meIcon}).addTo(userLayer).bindPopup("You");
+  }
+}
+window.enableLocation=()=>{
+  if(!navigator.geolocation){toast("Geolocation is not supported.");return}
+  navigator.geolocation.getCurrentPosition(async p=>{
+    currentPosition={lat:p.coords.latitude,lng:p.coords.longitude};
+    await api("/api/location",{method:"POST",body:JSON.stringify(currentPosition)});
+    toast("Live location sharing enabled");drawMarkers();
+    if(watchId===null)watchId=navigator.geolocation.watchPosition(async q=>{
+      currentPosition={lat:q.coords.latitude,lng:q.coords.longitude};
+      await api("/api/location",{method:"POST",body:JSON.stringify(currentPosition)});drawMarkers();
+    },()=>{},{enableHighAccuracy:true,maximumAge:10000,timeout:10000});
+  },()=>toast("Location permission was not granted"),{enableHighAccuracy:true,timeout:10000});
+};
+window.disableLocation=async()=>{
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null}
+  currentPosition=null;
+  await api("/api/location",{method:"POST",body:JSON.stringify({lat:null,lng:null})});
+  toast("Location sharing stopped");drawMarkers();
+};
+window.locateMe=()=>{enableLocation();if(currentPosition)mapObj.setView([currentPosition.lat,currentPosition.lng],16)};
+window.routeTo=uid=>{
+  const u=users.get(uid);if(!u||!Number.isFinite(u.lat)||!Number.isFinite(u.lng)){toast("This person has not shared a location.");return}
+  if(!currentPosition){toast("Share your location first.");return}
+  go("mapPage");
+  if(routeControl)mapObj.removeControl(routeControl);
+  routeControl=L.Routing.control({waypoints:[L.latLng(currentPosition.lat,currentPosition.lng),L.latLng(u.lat,u.lng)],router:L.Routing.osrmv1({serviceUrl:"https://router.project-osrm.org/route/v1"}),addWaypoints:false,draggableWaypoints:false,fitSelectedRoutes:true,showAlternatives:false}).addTo(mapObj);
+  $("routeBox").classList.remove("hidden");$("routeBox").textContent=`Guidance destination: ${u.name}.`;
+};
+
+window.createRequest=async()=>{
+  await api("/api/requests",{method:"POST",body:JSON.stringify({battery:Number($("battery").value),resource:$("resource").value,note:$("requestNote").value})});
+  toast("Assistance request sent");$("requestNote").value="";go("dashboard");
+};
+window.acceptRequest=async id=>{
+  await api(`/api/requests/${id}/accept`,{method:"POST"});
+  toast("Request accepted — student notified");
+};
+async function refreshRequests(){
+  requests=await api("/api/requests");
+  const box=$("requestList");if(!box)return;
+  const mine=requests.filter(r=>r.userId===myId),isHelper=!!me.helperAvailable;
+  const shown=isHelper?requests:mine;
+  if(!shown.length){box.innerHTML="<div class='empty'>No assistance requests yet.</div>";return}
+  box.innerHTML=shown.map(r=>{
+    const owner=r.userId===myId;
+    const nm=owner?"You":(users.get(r.userId)?.name||"Student");
+    return `<div class="help-card"><div class="row"><b>🔋 ${esc(nm)}</b><span class="status">${esc(r.status||"Pending")}</span></div>
+      <div class="tiny muted" style="margin-top:5px">${r.battery}% battery · ${esc(r.resource)} · ${new Date(r.createdAt).toLocaleString()}</div>
+      ${r.note?`<p style="margin:8px 0">${esc(r.note)}</p>`:""}
+      <div class="actions">${!owner?`<button class="primary" onclick="openChat('${r.userId}');go('chat')">💬 Contact Student</button>`:""} ${!owner&&r.status==="Pending"?`<button onclick="acceptRequest('${r.id}')">Accept Request</button>`:""} ${owner&&r.status==="Accepted"&&r.helperId?`<button class="primary" onclick="openChat('${r.helperId}');go('chat')">💬 Message Helper</button>`:""}</div></div>`;
+  }).join("");
+  renderHelpNearby();
+}
+function renderPeople(){
+  const box=$("chatPeople");if(!box)return;
+  const people=[...users.values()];
+  box.innerHTML=people.length?people.map(u=>`<div class="chat-person ${chatWith===u.id?"active":""}" onclick="openChat('${u.id}')"><b>${esc(u.name)}</b><div class="tiny muted">${u.helperAvailable?"🔋 Helper":"👤 Student"} · ${u.online?"Online":"Offline"}</div></div>`).join(""):"<div class='empty'>No other participating users yet.</div>";
+}
+window.openChat=uid=>{
+  const u=users.get(uid);if(!u)return;chatWith=uid;
+  $("chatHead").innerHTML=`<b>${esc(u.name)}</b><div class="tiny muted">${u.helperAvailable?"🔋 Available helper":"👤 Student"} · ${u.online?"Online":"Offline"}</div>`;
+  loadMessages();renderPeople();
+};
+async function loadMessages(){
+  const box=$("messages");if(!box||!chatWith)return;
+  const msgs=await api("/api/messages?with="+chatWith);
+  box.innerHTML=msgs.length?msgs.map(m=>`<div class="bubble ${m.from===myId?"mine":""}">${esc(m.text)}<small>${new Date(m.createdAt).toLocaleString()}</small></div>`).join(""):"<div class='empty'>No messages yet. Say hello.</div>";
+  box.scrollTop=box.scrollHeight;
+}
+window.sendMessage=async()=>{
+  if(!chatWith)return toast("Select a person first.");
+  const input=$("chatInput"),text=input.value.trim();if(!text)return;
+  input.value="";
+  await api("/api/messages",{method:"POST",body:JSON.stringify({to:chatWith,text})});
+  loadMessages();
+};
+
+window.go=p=>{
+  document.querySelectorAll(".page").forEach(x=>x.classList.add("hidden"));
+  $(p)?.classList.remove("hidden");
+  document.querySelectorAll("nav button[data-page]").forEach(b=>b.classList.toggle("active",b.dataset.page===p));
+  if(p==="mapPage")setTimeout(()=>mapObj?.invalidateSize(),100);
+  if(p==="chat")renderPeople();
+  if(p==="requests")refreshRequests();
+  if(p==="helpNearby")renderHelpNearby();
+};
+
+window.addEventListener("beforeunload",()=>{
+  if(token)navigator.sendBeacon("/api/offline?token="+encodeURIComponent(token));
+  if(watchId!==null)navigator.geolocation.clearWatch(watchId);
+});
+
+if(token)startSession().catch(()=>{localStorage.removeItem(TOKEN_KEY);token=null});
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+</body>
+  </html>
